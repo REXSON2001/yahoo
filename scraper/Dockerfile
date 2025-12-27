@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 # -------------------------------
-# Install system dependencies
+# System dependencies for Chrome
 # -------------------------------
 RUN apt-get update && apt-get install -y \
     wget \
@@ -23,27 +23,15 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     libasound2 \
     libxshmfence1 \
-    libu2f-udev \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------
-# Install Google Chrome (stable)
+# Install Google Chrome ONLY
 # -------------------------------
 RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-    && apt-get update \
     && apt-get install -y ./google-chrome-stable_current_amd64.deb \
     && rm google-chrome-stable_current_amd64.deb
-
-# -------------------------------
-# Install matching ChromeDriver
-# -------------------------------
-RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d'.' -f1) && \
-    wget -q "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION}" -O /tmp/LATEST && \
-    wget -q "https://chromedriver.storage.googleapis.com/$(cat /tmp/LATEST)/chromedriver_linux64.zip" -O /tmp/chromedriver.zip && \
-    unzip /tmp/chromedriver.zip -d /usr/bin/ && \
-    chmod +x /usr/bin/chromedriver && \
-    rm /tmp/chromedriver.zip /tmp/LATEST
 
 # -------------------------------
 # Python setup
@@ -51,14 +39,15 @@ RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d'.' -f1)
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install webdriver-manager
 
 COPY . .
 
 RUN mkdir -p screenshots data logs
 
 # -------------------------------
-# Environment variables
+# Environment
 # -------------------------------
 ENV CHROME_BIN=/usr/bin/google-chrome
 ENV PYTHONPATH=/app
