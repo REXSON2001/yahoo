@@ -3,13 +3,17 @@ FROM selenium/standalone-chrome:latest
 USER root
 
 # -------------------------------
-# Install Python
+# Install Python 3.11 (NOT 3.12)
 # -------------------------------
 RUN apt-get update && apt-get install -y \
-    python3 \
+    python3.11 \
+    python3.11-dev \
     python3-pip \
-    python3-venv \
+    pkg-config \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/bin/python3.11 /usr/bin/python
 
 # -------------------------------
 # App setup
@@ -17,19 +21,13 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
 RUN mkdir -p screenshots data logs
 
-# -------------------------------
-# Environment
-# -------------------------------
 ENV PYTHONPATH=/app
 ENV CHROME_BIN=/usr/bin/google-chrome
 
-# -------------------------------
-# Run scraper
-# -------------------------------
-CMD ["python3", "yahoo_persistent_enhanced_complete.py"]
+CMD ["python", "yahoo_persistent_enhanced_complete.py"]
