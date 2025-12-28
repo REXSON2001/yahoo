@@ -3,12 +3,12 @@ version: '3.8'
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: yahoo-scraper-db
     environment:
       POSTGRES_DB: ${DB_NAME:-sender_hub}
       POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password123}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -21,6 +21,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
   # FastAPI Server
   api:
@@ -28,9 +29,9 @@ services:
     container_name: yahoo-scraper-api
     environment:
       - DB_HOST=postgres
-      - DB_NAME=${DB_NAME:-sender_hub}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-password123}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_PORT=5432
     ports:
       - "8001:8001"
@@ -40,6 +41,7 @@ services:
     volumes:
       - ./shared_data/screenshots:/app/screenshots
       - ./shared_data/data:/app/data
+      - ./api/logs:/app/logs
     networks:
       - scraper-network
     restart: unless-stopped
@@ -50,21 +52,27 @@ services:
     container_name: yahoo-scraper
     environment:
       - DB_HOST=postgres
-      - DB_NAME=${DB_NAME:-sender_hub}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-password123}
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
       - DB_PORT=5432
       - YAHOO_EMAIL=${YAHOO_EMAIL}
       - YAHOO_PASSWORD=${YAHOO_PASSWORD}
+      - HEADLESS=true  # Set to true for EC2
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ./shared_data/screenshots:/app/screenshots
       - ./shared_data/data:/app/data
+      - ./scraper/logs:/app/logs
     networks:
       - scraper-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
 volumes:
   postgres_data:
