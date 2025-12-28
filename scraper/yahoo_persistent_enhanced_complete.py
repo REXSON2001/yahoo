@@ -1,4 +1,4 @@
-# yahoo_persistent_enhanced_complete.py - EC2 OPTIMIZED VERSION - FIXED
+# yahoo_persistent_enhanced_complete.py - EC2 OPTIMIZED VERSION - FIXED IMPORT
 import time
 import json
 import pandas as pd
@@ -25,6 +25,7 @@ load_dotenv()
 warnings.filterwarnings("ignore")
 os.environ['WDM_LOG_LEVEL'] = '0'
 os.environ['WDM_LOG'] = 'false'
+os.environ['WDM_PROGRESS_BAR'] = 'false'
 
 # Selenium imports
 from selenium import webdriver
@@ -38,7 +39,6 @@ from selenium.webdriver.common.keys import Keys
 from bs4 import BeautifulSoup
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.core.utils import get_browser_version_from_os
 
 # Setup logging with immediate flush
 logging.basicConfig(
@@ -713,8 +713,109 @@ class FileManager:
             'total_accounts': len(accounts)
         }
 
+class EC2WebDriverManager:
+    """WebDriver manager specifically for EC2/Docker environments"""
+    
+    @staticmethod
+    def setup_driver(headless=True):
+        """Setup Chrome driver for EC2 environment"""
+        chrome_options = Options()
+        
+        if headless:
+            chrome_options.add_argument("--headless=new")
+        
+        # EC2 optimized settings
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--disable-software-rasterizer")
+        chrome_options.add_argument("--remote-debugging-port=9222")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
+        
+        # Anti-detection settings
+        chrome_options.add_argument("--incognito")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        
+        # Window and user agent
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        chrome_options.add_argument("--force-device-scale-factor=1")
+        chrome_options.add_argument("--log-level=3")
+        
+        # Memory optimization for EC2
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-plugins")
+        chrome_options.add_argument("--blink-settings=imagesEnabled=true")
+        chrome_options.add_argument("--memory-pressure-off")
+        
+        # Disable notifications and popups
+        chrome_options.add_argument("--disable-notifications")
+        chrome_options.add_argument("--disable-popup-blocking")
+        
+        # Disable password manager
+        prefs = {
+            "credentials_enable_service": False,
+            "profile.password_manager_enabled": False,
+            "profile.default_content_setting_values.notifications": 2
+        }
+        chrome_options.add_experimental_option("prefs", prefs)
+        
+        # Setup ChromeDriver with retry logic
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                print(f"🔄 WebDriver setup attempt {attempt + 1}/{max_attempts}", flush=True)
+                
+                # Use ChromeDriverManager with cache
+                driver_manager = ChromeDriverManager(cache_valid_range=30)
+                driver_path = driver_manager.install()
+                
+                # For newer ChromeDriver versions (v115+), the structure might be different
+                if os.path.isdir(driver_path):
+                    # Look for chromedriver in various locations
+                    possible_locations = [
+                        os.path.join(driver_path, "chromedriver"),
+                        os.path.join(driver_path, "chromedriver-linux64", "chromedriver"),
+                        os.path.join(driver_path, "chromedriver-linux64", "chromedriver-linux64", "chromedriver"),
+                    ]
+                    
+                    for location in possible_locations:
+                        if os.path.exists(location):
+                            driver_path = location
+                            break
+                
+                print(f"✅ Using ChromeDriver at: {driver_path}", flush=True)
+                
+                # Ensure executable permissions
+                if os.path.exists(driver_path):
+                    os.chmod(driver_path, 0o755)
+                    print(f"✅ Set executable permissions", flush=True)
+                
+                # Create service and driver
+                service = ChromeService(driver_path)
+                driver = webdriver.Chrome(service=service, options=chrome_options)
+                
+                # Remove webdriver flag
+                driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+                
+                print(f"✅ WebDriver setup successful", flush=True)
+                return driver
+                
+            except Exception as e:
+                print(f"❌ WebDriver setup attempt {attempt + 1} failed: {str(e)}", flush=True)
+                if attempt < max_attempts - 1:
+                    time.sleep(10)
+                    continue
+                raise
+        
+        return None
+
 class PersistentAccountScraper:
-    """EC2 OPTIMIZED scraper for a single account - FIXED WEBDRIVER ISSUE"""
+    """EC2 OPTIMIZED scraper for a single account - FIXED IMPORT"""
     
     def __init__(self, account: Dict, db_manager: DatabaseManager, headless: bool = True):
         self.account = account
@@ -733,117 +834,22 @@ class PersistentAccountScraper:
         self.max_login_attempts = 5
         
     def setup_persistent_driver(self):
-        """Configure and setup Chrome driver with EC2 optimized settings - FIXED WEBDRIVER ISSUE"""
+        """Configure and setup Chrome driver with EC2 optimized settings"""
         try:
-            chrome_options = Options()
+            print(f"🔄 Setting up browser for {self.account['email']}", flush=True)
             
-            if self.headless:
-                chrome_options.add_argument("--headless=new")
+            self.driver = EC2WebDriverManager.setup_driver(headless=self.headless)
             
-            # EC2 optimized settings
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-gpu")
-            chrome_options.add_argument("--disable-software-rasterizer")
-            chrome_options.add_argument("--remote-debugging-port=9222")
-            chrome_options.add_argument("--disable-background-timer-throttling")
-            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-            chrome_options.add_argument("--disable-renderer-backgrounding")
-            
-            # Anti-detection settings
-            chrome_options.add_argument("--incognito")
-            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
-            chrome_options.add_experimental_option('useAutomationExtension', False)
-            
-            # Window and user agent
-            chrome_options.add_argument("--window-size=1920,1080")
-            chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            chrome_options.add_argument("--force-device-scale-factor=1")
-            chrome_options.add_argument("--log-level=3")
-            
-            # Memory optimization for EC2
-            chrome_options.add_argument("--disable-extensions")
-            chrome_options.add_argument("--disable-plugins")
-            chrome_options.add_argument("--disable-images")
-            chrome_options.add_argument("--blink-settings=imagesEnabled=false")
-            chrome_options.add_argument("--disable-javascript")
-            chrome_options.add_argument("--memory-pressure-off")
-            
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                try:
-                    print(f"🔄 Browser setup attempt {attempt + 1}/{max_attempts} for {self.account['email']}", flush=True)
-                    
-                    # FIXED: Use ChromeDriverManager with manual executable path correction
-                    driver_manager = ChromeDriverManager()
-                    driver_path = driver_manager.install()
-                    
-                    # FIXED: Check if the path points to a directory (new ChromeDriver structure)
-                    if os.path.isdir(driver_path):
-                        # New structure: driver_path is a directory containing chromedriver
-                        potential_driver_paths = [
-                            os.path.join(driver_path, "chromedriver"),
-                            os.path.join(driver_path, "chromedriver.exe"),
-                            os.path.join(driver_path, "chromedriver-linux64", "chromedriver"),
-                            os.path.join(driver_path, "chromedriver-linux64", "chromedriver.exe"),
-                        ]
-                        
-                        found_driver = None
-                        for potential_path in potential_driver_paths:
-                            if os.path.exists(potential_path):
-                                found_driver = potential_path
-                                break
-                        
-                        if found_driver:
-                            driver_path = found_driver
-                            print(f"✅ Found ChromeDriver executable at: {driver_path}", flush=True)
-                        else:
-                            # List contents to debug
-                            print(f"📁 Directory contents of {driver_path}:", flush=True)
-                            for item in os.listdir(driver_path):
-                                print(f"  - {item}", flush=True)
-                            raise Exception(f"Could not find chromedriver executable in {driver_path}")
-                    else:
-                        # Old structure: driver_path is directly the executable
-                        print(f"✅ Using ChromeDriver at: {driver_path}", flush=True)
-                    
-                    # Make sure the executable has correct permissions
-                    if os.path.exists(driver_path):
-                        os.chmod(driver_path, 0o755)  # Ensure executable permission
-                        print(f"✅ Set executable permissions for: {driver_path}", flush=True)
-                    
-                    # Create service with fixed path
-                    service = ChromeService(driver_path)
-                    
-                    self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                    
-                    # Remove webdriver flag
-                    self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-                    
-                    self.wait = WebDriverWait(self.driver, 45)
-                    
-                    print(f"✅ Browser setup completed for {self.account['email']}", flush=True)
-                    return True
-                    
-                except Exception as e:
-                    if attempt < max_attempts - 1:
-                        wait_time = (attempt + 1) * 15
-                        print(f"⚠️ Browser setup attempt {attempt + 1} failed, retrying in {wait_time} seconds...: {str(e)}", flush=True)
-                        time.sleep(wait_time)
-                        
-                        try:
-                            if self.driver:
-                                self.driver.quit()
-                        except:
-                            pass
-                        self.driver = None
-                    else:
-                        print(f"❌ All browser setup attempts failed: {str(e)}", flush=True)
-                        return False
-            
+            if self.driver:
+                self.wait = WebDriverWait(self.driver, 45)
+                print(f"✅ Browser setup completed for {self.account['email']}", flush=True)
+                return True
+            else:
+                print(f"❌ Browser setup failed for {self.account['email']}", flush=True)
+                return False
+                
         except Exception as e:
-            print(f"❌ Error setting up driver: {str(e)}", flush=True)
+            print(f"❌ Error setting up driver for {self.account['email']}: {str(e)}", flush=True)
             return False
 
     def random_delay(self, min_delay: float = 2.0, max_delay: float = 5.0):
@@ -910,13 +916,6 @@ class PersistentAccountScraper:
                 # Navigate to Yahoo Sender Hub with longer timeout
                 self.driver.get("https://senders.yahooinc.com/")
                 self.ensure_page_fully_loaded(45)
-                
-                # Take debug screenshot
-                try:
-                    self.driver.save_screenshot(f"/app/login_attempt_{login_attempt + 1}.png")
-                    print(f"📸 Saved debug screenshot: login_attempt_{login_attempt + 1}.png", flush=True)
-                except:
-                    pass
                 
                 # ENHANCED: Better waiting for page elements
                 time.sleep(8)
@@ -1214,13 +1213,6 @@ class PersistentAccountScraper:
                     self.current_account = email
                     print(f"✅ GUARANTEED login successful: {email}", flush=True)
                     
-                    # Take post-login screenshot for verification
-                    try:
-                        self.driver.save_screenshot(f"/app/login_success_{email}.png")
-                        print(f"📸 Saved login success screenshot", flush=True)
-                    except:
-                        pass
-                    
                     return True
                 else:
                     print(f"❌ Login verification failed for {email}", flush=True)
@@ -1242,72 +1234,58 @@ class PersistentAccountScraper:
         
         return False
 
-    # [Add all your other methods here - they should remain the same as your working local version]
-    # I'm including placeholders for the most critical methods, but you should copy your complete working code
-    
+    # [Add your other methods here]
+    # Placeholder for other methods - copy from your working local version
     def find_and_click_dropdown_enhanced(self) -> bool:
         """ENHANCED method to find and click domain dropdown"""
-        # Copy from your working local version
         pass
     
     def get_available_domains_enhanced(self) -> List[str]:
         """ENHANCED method to get available domains"""
-        # Copy from your working local version
         pass
     
     def select_domain_directly_enhanced(self, target_domain: str) -> bool:
         """ENHANCED method to directly select domain"""
-        # Copy from your working local version
         pass
     
     def navigate_to_domain_stats_enhanced(self, domain: str) -> bool:
         """ENHANCED method to navigate to domain stats"""
-        # Copy from your working local version
         pass
     
     def select_insights_time_range(self, days: int = 180) -> bool:
         """Select the time range in Insights section"""
-        # Copy from your working local version
         pass
     
     def check_for_no_data(self) -> bool:
         """Check if the page shows 'No data' message"""
-        # Copy from your working local version
         pass
     
     def extract_insights_data(self) -> Dict:
         """Extract actual insights data from the page"""
-        # Copy from your working local version
         pass
     
     def extract_domain_stats(self, domain: str) -> Dict:
         """Extract domain statistics with actual data"""
-        # Copy from your working local version
         pass
     
     def save_stats(self, stats: Dict, screenshot_path: str = ""):
         """Save statistics with screenshot path"""
-        # Copy from your working local version
         pass
     
     def should_take_screenshot(self, stats: Dict) -> bool:
         """Check if screenshot should be taken"""
-        # Copy from your working local version
         pass
     
     def process_single_domain_enhanced(self, domain: str) -> Dict:
         """ENHANCED method to process single domain"""
-        # Copy from your working local version
         pass
     
     def detect_new_domains(self, current_domains: List[str]) -> List[str]:
         """Detect newly added domains"""
-        # Copy from your working local version
         pass
     
     def run_hourly_scrape_enhanced(self):
         """ENHANCED hourly scrape"""
-        # Copy from your working local version
         pass
 
     def ensure_browser_alive(self):
@@ -1357,7 +1335,7 @@ class PersistentAccountScraper:
             return self.guaranteed_login()
 
     def start_persistent_scraping(self):
-        """Start PERSISTENT scraping - MODIFIED for EC2 with fixed webdriver"""
+        """Start PERSISTENT scraping - EC2 optimized"""
         print(f"🔄 Starting PERSISTENT scraping for {self.account['email']}...", flush=True)
         
         # Initial setup with EC2 optimized settings
@@ -1566,7 +1544,7 @@ class SimultaneousPersistentManager:
 
 # Main execution - EC2 OPTIMIZED
 def main():
-    print("🚀 Starting Yahoo Sender Hub Scraper - EC2 OPTIMIZED VERSION (FIXED)", flush=True)
+    print("🚀 Starting Yahoo Sender Hub Scraper - EC2 OPTIMIZED VERSION (FIXED IMPORT)", flush=True)
     
     # Check if running in EC2/Docker environment
     is_ec2 = os.getenv('EC2_ENVIRONMENT', 'False').lower() in ('true', '1', 't')
@@ -1609,7 +1587,7 @@ def main():
     
     try:
         print("\n" + "="*80, flush=True)
-        print("🚀 STARTING SCRAPING SYSTEM - EC2 OPTIMIZED (FIXED WEBDRIVER)", flush=True)
+        print("🚀 STARTING SCRAPING SYSTEM - EC2 OPTIMIZED (FIXED IMPORT)", flush=True)
         print("🌐 CLOUD DEPLOYMENT READY", flush=True)
         if db_initialized:
             print("💾 DATA WILL BE SAVED TO DATABASE AND JSON FILES", flush=True)
