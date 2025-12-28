@@ -1,52 +1,63 @@
 FROM python:3.11-slim
 
-# Install system dependencies for Chrome - FIXED
+# Install system dependencies including Chrome
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
-    ca-certificates \
+    curl \
+    unzip \
+    xvfb \
     fonts-liberation \
+    libappindicator3-1 \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
     libcups2 \
     libdbus-1-3 \
-    libdrm2 \
-    libgbm1 \
+    libgdk-pixbuf2.0-0 \
     libnspr4 \
     libnss3 \
-    libwayland-client0 \
+    libx11-xcb1 \
     libxcomposite1 \
     libxdamage1 \
-    libxfixes3 \
     libxrandr2 \
     xdg-utils \
+    libgbm-dev \
+    libgtk-3-0 \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome (stable version)
-RUN wget -q -O /tmp/chrome.deb "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" \
+# Install Google Chrome
+RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
-    && apt-get install -y /tmp/chrome.deb \
-    && rm /tmp/chrome.deb
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy requirements first (for better caching)
+# Copy requirements first for better caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy the application
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p screenshots data logs
+RUN mkdir -p screenshots data
 
 # Set environment variables
-ENV CHROME_BIN=/usr/bin/google-chrome
+ENV PYTHONUNBUFFERED=1
+ENV EC2_ENVIRONMENT=True
 ENV DISPLAY=:99
-ENV PYTHONPATH=/app
-ENV TZ=UTC
+ENV CHROME_BIN=/usr/bin/google-chrome
 
-# Run the scraper
+# Create a non-root user to run Chrome
+RUN groupadd -r chrome && useradd -r -g chrome -G audio,video chrome \
+    && mkdir -p /home/chrome && chown -R chrome:chrome /home/chrome \
+    && chown -R chrome:chrome /app
+
+USER chrome
+
+# Run the application
 CMD ["python", "yahoo_persistent_enhanced_complete.py"]
