@@ -1,33 +1,60 @@
-FROM selenium/standalone-chrome:latest
+FROM python:3.11-slim
 
-USER root
-
-# -------------------------------
-# Install Python 3.11 (NOT 3.12)
-# -------------------------------
+# Install system dependencies for Chrome
 RUN apt-get update && apt-get install -y \
-    python3.11 \
-    python3.11-dev \
-    python3-pip \
-    pkg-config \
-    build-essential \
+    wget \
+    gnupg \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libnspr4 \
+    libnss3 \
+    libwayland-client0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    xdg-utils \
+    --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-RUN ln -sf /usr/bin/python3.11 /usr/bin/python
+# Install Chrome (stable version)
+RUN wget -q -O /tmp/chrome.deb "https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb" \
+    && apt-get update \
+    && apt-get install -y /tmp/chrome.deb \
+    && rm /tmp/chrome.deb
 
-# -------------------------------
-# App setup
-# -------------------------------
+# Install ChromeDriver (matching version)
+RUN wget -q -O /tmp/chromedriver.zip https://storage.googleapis.com/chrome-for-testing-public/$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json | grep -o '"version":"[^"]*"' | head -1 | cut -d'"' -f4)/linux64/chromedriver-linux64.zip \
+    && unzip /tmp/chromedriver.zip -d /tmp/ \
+    && mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm -rf /tmp/chromedriver*
+
 WORKDIR /app
 
+# Copy requirements first (for better caching)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
 COPY . .
 
+# Create necessary directories
 RUN mkdir -p screenshots data logs
 
-ENV PYTHONPATH=/app
+# Set environment variables
 ENV CHROME_BIN=/usr/bin/google-chrome
+ENV CHROMEDRIVER_PATH=/usr/local/bin/chromedriver
+ENV DISPLAY=:99
+ENV PYTHONPATH=/app
+ENV TZ=UTC
 
+# Run the scraper
 CMD ["python", "yahoo_persistent_enhanced_complete.py"]
